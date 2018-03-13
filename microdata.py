@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import sys
-import html5lib
+from lxml import etree, html
 
 from collections import defaultdict
 
@@ -12,18 +12,35 @@ except ImportError:
     import simplejson as json
 
 
-def get_items(location, encoding=None):
+def root_node(text, encoding, base_url=None):
+    try:
+        text = text.read()
+    except AttributeError:
+        pass
+
+    return etree.fromstring(
+        text,
+        parser=html.HTMLParser(recover=True, encoding=encoding),
+        base_url=base_url
+    )
+
+
+def get_items(value, encoding=None):
     """
     Pass in a string or file-like object and get a list of Items present in the
     HTML document.
     """
-    dom_builder = html5lib.treebuilders.getTreeBuilder("dom")
-    parser = html5lib.HTMLParser(tree=dom_builder)
-    if encoding:
-        tree = parser.parse(location, transport_encoding=encoding)
+    if isinstance(value, etree.ElementBase):
+        node = value
     else:
-        tree = parser.parse(location)
-    return _find_items(tree)
+        try:
+            text = value.read()
+        except AttributeError:
+            text = value
+
+        node = root_node(text, encoding=encoding)
+
+    return _find_items(node)
 
 
 class Item(object):
@@ -148,7 +165,7 @@ def _find_items(e):
         for unlinked_element in unlinked:
             items.extend(_find_items(unlinked_element))
     else:
-        for child in e.childNodes:
+        for child in e.iterchildren():
             items.extend(_find_items(child))
 
     return items
@@ -160,7 +177,7 @@ def _extract(e, item):
     # but which were not directly related to the Item that was passed in
     unlinked = []
 
-    for child in e.childNodes:
+    for child in e.iterchildren():
         itemprop = _attr(child, "itemprop")
         itemscope = _is_itemscope(child)
         if itemprop and itemscope:
@@ -184,13 +201,11 @@ def _extract(e, item):
 
 
 def _attr(e, name):
-    if _is_element(e) and e.hasAttribute(name):
-        return e.getAttribute(name)
-    return None
+    return e.attrib.get(name, None)
 
 
 def _is_element(e):
-    return e.nodeType == e.ELEMENT_NODE
+    return True
 
 
 def _is_itemscope(e):
@@ -199,25 +214,40 @@ def _is_itemscope(e):
 
 def _property_value(e):
     value = None
-    attrib = property_values.get(e.tagName, None)
+    attrib = property_values.get(e.tag, None)
     if attrib in ["href", "src"]:
-        value = URI(e.getAttribute(attrib))
+        value = URI(e.get(attrib))
     elif attrib:
-        value = e.getAttribute(attrib)
+        value = e.attrib.get(attrib)
     else:
-        value = e.getAttribute("content") or _text(e)
+        value = e.attrib.get("content") or _text(e)
     return value
 
 
+# Follows https://github.com/lxml/lxml/blob/4fd86ebeb11d859827cc7eae419488020a29bbc0/src/lxml/etree.pyx#L2930-L2963
+def _textiter(node, predicate=None):
+    ctx = etree.iterwalk(node, events=('start', 'end'))
+    result = None
+    while True:
+        result = None
+        while result is None:
+            try:
+                event, element = next(ctx)
+            except StopIteration:
+                return
+
+            if predicate and not predicate(element):
+                continue
+
+            if event == 'start':
+                result = element.text
+            elif element is not node:
+                result = element.tail
+        yield result
+
+
 def _text(e):
-    chunks = []
-    if e.nodeType == e.TEXT_NODE:
-        chunks.append(e.data)
-    elif hasattr(e, 'tagName') and e.tagName == 'script':
-        return ''
-    for child in e.childNodes:
-        chunks.append(_text(child))
-    return ''.join(chunks)
+    return ''.join(_textiter(e, predicate=lambda el: el.tag != 'script'))
 
 
 def _make_item(e):
