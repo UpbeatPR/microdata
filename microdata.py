@@ -12,15 +12,20 @@ except ImportError:
     import simplejson as json
 
 
-def root_node(text, encoding, base_url=None):
+def root_node(text, encoding=None, base_url=None):
     try:
         text = text.read()
     except AttributeError:
         pass
 
+    if isinstance(text, str):
+        parser = html.HTMLParser(recover=True)
+    else:
+        parser = html.HTMLParser(encoding=encoding)
+
     return etree.fromstring(
         text,
-        parser=html.HTMLParser(recover=True, encoding=encoding),
+        parser=parser,
         base_url=base_url
     )
 
