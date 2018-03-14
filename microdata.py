@@ -52,7 +52,6 @@ def get_items(value, encoding=None):
         node = value
     else:
         node = root_node(value, encoding=encoding)
-
     return _find_items(node)
 
 
@@ -214,7 +213,14 @@ def _extract(e, item):
 
 
 def _attr(e, name):
-    return e.get(name, None)
+    # Normally, we'd return None here if the attribute
+    # is not found.
+    # However, this library was built on html5lib,
+    # which uses Python's std `xml.dom.minidom` implementation,
+    # which returns an empty string when an attribute is not found.
+    # This preserves previous semantics.
+    # See https://docs.python.org/3.6/library/xml.dom.html#xml.dom.Element.getAttribute
+    return e.get(name, '')
 
 
 def _is_element(e):
