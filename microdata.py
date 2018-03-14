@@ -22,7 +22,7 @@ def root_node(text, encoding=None, base_url=None):
     if isinstance(text, str):
         parser = html.HTMLParser(recover=True)
     else:
-        parser = html.HTMLParser(encoding=encoding)
+        parser = html.HTMLParser(recover=True, encoding=encoding)
 
     try:
         return etree.fromstring(
