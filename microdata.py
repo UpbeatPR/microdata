@@ -4,6 +4,7 @@ import sys
 from lxml import etree, html
 
 from collections import defaultdict
+from w3lib.encoding import html_body_declared_encoding
 
 
 try:
@@ -23,11 +24,23 @@ def root_node(text, encoding=None, base_url=None):
     else:
         parser = html.HTMLParser(encoding=encoding)
 
-    return etree.fromstring(
-        text,
-        parser=parser,
-        base_url=base_url
-    )
+    try:
+        return etree.fromstring(
+            text,
+            parser=parser,
+            base_url=base_url
+        )
+    except ValueError as e:
+        if 'Unicode strings with encoding declaration are not supported' in str(e):
+            # html_body_declared_encoding may return None
+            encoding = html_body_declared_encoding(text) or 'utf-8'
+
+            return etree.fromstring(
+                text.encode(encoding),
+                parser=parser,
+                base_url=base_url
+            )
+        raise
 
 
 def get_items(value, encoding=None):
@@ -38,12 +51,7 @@ def get_items(value, encoding=None):
     if isinstance(value, etree.ElementBase):
         node = value
     else:
-        try:
-            text = value.read()
-        except AttributeError:
-            text = value
-
-        node = root_node(text, encoding=encoding)
+        node = root_node(value, encoding=encoding)
 
     return _find_items(node)
 
@@ -206,11 +214,11 @@ def _extract(e, item):
 
 
 def _attr(e, name):
-    return e.attrib.get(name, None)
+    return e.get(name, None)
 
 
 def _is_element(e):
-    return True
+    return etree.iselement(e)
 
 
 def _is_itemscope(e):
@@ -223,9 +231,9 @@ def _property_value(e):
     if attrib in ["href", "src"]:
         value = URI(e.get(attrib))
     elif attrib:
-        value = e.attrib.get(attrib)
+        value = e.get(attrib)
     else:
-        value = e.attrib.get("content") or _text(e)
+        value = e.get("content") or _text(e)
     return value
 
 
@@ -244,6 +252,9 @@ def _textiter(node, predicate=None):
             if predicate and not predicate(element):
                 continue
 
+            # For information on how .text and .tail differ
+            # and are both needed, see
+            # http://lxml.de/tutorial.html#elements-contain-text
             if event == 'start':
                 result = element.text
             elif element is not node:
@@ -257,7 +268,7 @@ def _text(e):
 
 def _make_item(e):
     if not _is_itemscope(e):
-        raise Exception("element is not an Item")
+        raise ValueError("element is not an Item")
     itemtype = _attr(e, "itemtype")
     itemid = _attr(e, "itemid")
     return Item(itemtype, itemid)

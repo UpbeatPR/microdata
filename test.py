@@ -117,7 +117,13 @@ class MicrodataParserTest(unittest.TestCase):
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0].name, "Jane Doe")
 
-        
+    def test_parse_with_encoding_declared(self):
+        with open('test-data/encoding-declared.html') as f:
+            # Should not raise.
+            items = get_items(f)
+
+        self.assertEqual(len(items), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
