@@ -213,14 +213,9 @@ def _extract(e, item):
 
 
 def _attr(e, name):
-    # Normally, we'd return None here if the attribute
-    # is not found.
-    # However, this library was built on html5lib,
-    # which uses Python's std `xml.dom.minidom` implementation,
-    # which returns an empty string when an attribute is not found.
-    # This preserves previous semantics.
-    # See https://docs.python.org/3.6/library/xml.dom.html#xml.dom.Element.getAttribute
-    return e.get(name, '')
+    if _is_element(e):
+        return e.get(name, None)
+    return None
 
 
 def _is_element(e):
@@ -234,12 +229,20 @@ def _is_itemscope(e):
 def _property_value(e):
     value = None
     attrib = property_values.get(e.tag, None)
+
+    # Normally, we'd return None as the default value of the below
+    # .get() calls.
+    # However, this library was built on html5lib,
+    # which uses Python's std `xml.dom.minidom` implementation,
+    # which returns an empty string when an attribute is not found.
+    # This preserves previous semantics.
+    # See https://docs.python.org/3.6/library/xml.dom.html#xml.dom.Element.getAttribute
     if attrib in ["href", "src"]:
-        value = URI(e.get(attrib))
+        value = URI(e.get(attrib, ''))
     elif attrib:
-        value = e.get(attrib)
+        value = e.get(attrib, '')
     else:
-        value = e.get("content") or _text(e)
+        value = e.get("content", '') or _text(e)
     return value
 
 
